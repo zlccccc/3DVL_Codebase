@@ -1,0 +1,45 @@
+.idea
+# data/*
+
+# dataset
+data/ScanRefer*
+data/glove*
+data/scannet/scannet_data
+data/scannet/scans
+data/scannetv2_enet.pth
+
+# cachet
+__pycache__
+data/scannet/__pycache__
+lib/__pycache__
+lib/pointnet2/__pycache__
+models/__pycache__
+utils/__pycache__
+
+# pointnet2
+lib/pointnet2/build/
+lib/pointnet2/dist/
+lib/pointnet2/pointnet2.egg-info/
+
+# output
+outputs/
+
+# delete
+docs/.DS_Store
+
+# misc
+upload/
+
+script_shell/
+ignore/
+
+*/*/tensorboard/*
+*.swp
+
+nouse
+__pycache__
+*3dvg_trans*
+*vqa*
+Dataprocessing
+count_dataset_number.py
+*visual_question_answering*
