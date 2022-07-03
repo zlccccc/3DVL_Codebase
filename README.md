@@ -76,7 +76,7 @@ __Before moving on to the next step, please don't forget to set the project root
 ## Usage
 
 ### Training
-To train the 3DVG-Transformer model with multiview features:
+To train the 3DJCG model with multiview features:
 ```shell
 python scripts/joint_scripts/train_3djcg.py --use_multiview --use_normal --use_topdown --num_graph_steps 0 --num_locals 20 --batch_size 10 --epoch 200 --gpu 2 --verbose 50 --val_step 1000 --lang_num_max 8 --coslr --lr 0.002 --num_ground_epoch 150 --tag 3djcg
 ```
@@ -175,7 +175,7 @@ Visual Grounding：
 
 ## Citation
 
-If you use the codes in your work, please kindly cite our work 3DVG-Transformer and the original ScanRefer paper:
+If you use the codes in your work, please kindly cite our work 3DJCG and the original ScanRefer paper:
 
 ```
 @inproceedings{cai20223djcg,
