@@ -78,7 +78,7 @@ __Before moving on to the next step, please don't forget to set the project root
 ### Training
 To train the 3DVG-Transformer model with multiview features:
 ```shell
-python scripts/joint_scripts/train_3djcg.py --use_multiview --use_normal --batch_size 8 --epoch 200 --lr 0.002 --coslr --num_ground_epoch 150 --tag 3djcg
+python scripts/joint_scripts/train_3djcg.py --use_multiview --use_normal --use_topdown --num_graph_steps 0 --num_locals 20 --batch_size 10 --epoch 200 --gpu 2 --verbose 50 --val_step 1000 --lang_num_max 8 --coslr --lr 0.002 --num_ground_epoch 150 --tag 3djcg
 ```
 settings:
 XYZ: --use_normal
