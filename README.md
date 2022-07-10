@@ -165,6 +165,22 @@ Visual Grounding：
 |       3DJCG      |   CVPR2022  |  2D + 3D |   83.47  |  64.34  |   41.39  |   30.82  |   49.56  |  37.33  |
 
 
+## Q & A
+
+#### [BUG] Could not find lib.config:
+
+```shell
+try:
+    from lib.config import CONF
+except Exception as e:
+    from lib.configs.config import CONF
+```
+
+#### [BUG] Could not find ScanRefer_filtered_organized.json:
+
+ScanRefer_filtered_organized.json can be obtained by [Code](https://github.com/heng-hw/SpaCap3D/blob/16fcfb20f68f0b605b007aa554e12566175ef646/scripts/organize_scanrefer.py).
+
+
 ## Changelog
 
 2022/07: Release the codes of 3DJCG.
