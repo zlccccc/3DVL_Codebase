@@ -2,6 +2,8 @@
 
 This repository is for the **CVPR 2022** oral paper "[3DJCG: A Unified Framework for Joint Dense Captioning and Visual Grounding on 3D Point Clouds](https://openaccess.thecvf.com/content/CVPR2022/papers/Cai_3DJCG_A_Unified_Framework_for_Joint_Dense_Captioning_and_Visual_CVPR_2022_paper.pdf)"  
 
+Our method "3DJCG" maintains the **1st method** on several metrics with a simple backbone (VoteNet) for the [Scan2Cap benchmark](https://kaldir.vc.in.tum.de/scanrefer_benchmark/benchmark_captioning.php?sortby=dbleu_4_0_5IoU) and the [ScanRefer benchmark](https://kaldir.vc.in.tum.de/scanrefer_benchmark/benchmark_localization.php?sortby=doverall_acc_0_25IoU) (2022/9/3).
+
 ## Introduction
 
 Observing that the 3D captioning task and the 3D grounding task contain both shared and complementary information in nature, in this work, we propose a unified framework to jointly solve these two distinct but closely related tasks in a synergistic fashion, which consists of both shared task-agnostic modules and lightweight task-specific modules. On one hand, the shared task-agnostic modules aim to learn precise locations of objects, fine-grained attribute features to characterize different objects, and complex relations between objects, which benefit both captioning and visual grounding. On the other hand, by casting each of the two tasks as the proxy task of another one, the lightweight task-specific modules solve the captioning task and the grounding task respectively. Extensive experiments and ablation study on three 3D vision and language datasets demonstrate that our joint training framework achieves significant performance gains for each individual task and finally improves the state-of-the-art performance for both captioning and grounding tasks. 
