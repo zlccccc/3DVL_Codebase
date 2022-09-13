@@ -683,6 +683,7 @@ class ScannetReferenceDataset(ReferenceDataset):
                 point_votes_mask[ind] = 1.0
         point_votes = np.tile(point_votes, (1, 3)) # make 3 votes identical 
         
+        DC.nyu40id2class[0] = 0  # for benchmark testing
         class_ind = [DC.nyu40id2class[int(x)] for x in instance_bboxes[:num_bbox,-2]]
         # NOTE: set size class as semantic class. Consider use size2class.
         size_classes[0:num_bbox] = class_ind
