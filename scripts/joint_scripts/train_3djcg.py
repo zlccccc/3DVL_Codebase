@@ -77,11 +77,8 @@ def get_model(args, dataset, device):
         input_feature_dim=input_channels,
         num_proposal=args.num_proposals,
         no_caption=args.no_caption,
-        use_topdown=args.use_topdown,
         num_locals=args.num_locals,
         query_mode=args.query_mode,
-        num_graph_steps=args.num_graph_steps,
-        use_relation=args.use_relation,
         use_lang_classifier=(not args.no_lang_cls),
         use_bidir=args.use_bidir,
         no_reference=args.no_reference,
@@ -239,8 +236,6 @@ def get_solver(args, dataset, dataloader):
         num_ground_epoch=args.num_ground_epoch,
         detection=not args.no_detection,
         caption=not args.no_caption, 
-        orientation=args.use_orientation,
-        distance=args.use_distance,
         use_tf=args.use_tf,
         reference=not args.no_reference,
         use_lang_classifier=not args.no_lang_cls,
@@ -396,7 +391,7 @@ def get_scanrefer(args):
 
     print("using {} dataset".format(args.dataset))
     print("train on {} samples from {} scenes".format(len(new_scanrefer_train), len(train_scene_list)))
-    print("eval on {} scenes from train and {} scenes from val".format(len(new_scanrefer_eval_train), len(new_scanrefer_eval_val)))
+    print("eval on {} scenes from train and {} items from val".format(len(new_scanrefer_eval_train), len(new_scanrefer_eval_val)))
 
     return new_scanrefer_train, new_scanrefer_eval_train, new_scanrefer_eval_val, new_scanrefer_eval_val2, all_scene_list, scanrefer_train_new, scanrefer_eval_train_new, scanrefer_eval_val_new, scanrefer_eval_val_new2
 
@@ -456,15 +451,12 @@ if __name__ == "__main__":
     parser.add_argument("--num_proposals", type=int, default=256, help="Proposal number [default: 256]")
     parser.add_argument("--num_locals", type=int, default=-1, help="Number of local objects [default: -1]")
     parser.add_argument("--num_scenes", type=int, default=-1, help="Number of scenes [default: -1]")
-    parser.add_argument("--num_graph_steps", type=int, default=0, help="Number of graph conv layer [default: 0]")
     parser.add_argument("--num_ground_epoch", type=int, default=50, help="Number of ground epoch [default: 50]")
 
     parser.add_argument("--criterion", type=str, default="sum", \
         help="criterion for selecting the best model [choices: bleu-1, bleu-2, bleu-3, bleu-4, cider, rouge, meteor, sum]")
     
     parser.add_argument("--query_mode", type=str, default="center", help="Mode for querying the local context, [choices: center, corner]")
-    parser.add_argument("--graph_mode", type=str, default="edge_conv", help="Mode for querying the local context, [choices: graph_conv, edge_conv]")
-    parser.add_argument("--graph_aggr", type=str, default="add", help="Mode for aggregating features, [choices: add, mean, max]")
 
     parser.add_argument("--coslr", action='store_true', help="cosine learning rate")
     parser.add_argument("--no_height", action="store_true", help="Do NOT use height signal in input.")
@@ -478,11 +470,6 @@ if __name__ == "__main__":
     parser.add_argument("--use_color", action="store_true", help="Use RGB color in input.")
     parser.add_argument("--use_normal", action="store_true", help="Use RGB color in input.")
     parser.add_argument("--use_multiview", action="store_true", help="Use multiview images.")
-    parser.add_argument("--use_topdown", action="store_true", help="Use top-down attention for captioning.")
-    parser.add_argument("--use_relation", action="store_true", help="Use object-to-object relation in graph.")
-    parser.add_argument("--use_new", action="store_true", help="Use new Top-down module.")
-    parser.add_argument("--use_orientation", action="store_true", help="Use object-to-object orientation loss in graph.")
-    parser.add_argument("--use_distance", action="store_true", help="Use object-to-object distance loss in graph.")
     parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
     parser.add_argument("--use_pretrained", type=str, help="Specify the folder name containing the pretrained detection module.")
     parser.add_argument("--use_checkpoint", type=str, help="Specify the checkpoint root", default="")
@@ -490,9 +477,9 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Debug mode.")
     args = parser.parse_args()
 
-    # # setting
-    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    # setting
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # reproducibility
     torch.manual_seed(args.seed)

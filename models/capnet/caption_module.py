@@ -78,17 +78,9 @@ def select_multi_target(data_dict):
 
 
 class SceneCaptionModule(nn.Module):
-    def __init__(self, vocabulary, embeddings, emb_size=300, feat_size=128, hidden_size=512, num_proposals=256):
-        super().__init__() 
-        raise NotImplementedError()
-
-
-class TopDownSceneCaptionModule(nn.Module):
     def __init__(self, vocabulary, embeddings, emb_size=300, feat_size=128, hidden_size=512, num_proposals=256,
-        num_locals=-1, query_mode="corner", use_relation=False, use_oracle=False, head=4, depth=2):
+        num_locals=-1, query_mode="corner", use_oracle=False, head=4):
         super().__init__()
-        self.use_box_embedding = True
-        self.use_dist_weight_matrix = True
 
         self.vocabulary = vocabulary
         self.embeddings = embeddings
@@ -98,20 +90,11 @@ class TopDownSceneCaptionModule(nn.Module):
         self.feat_size = feat_size
         self.hidden_size = hidden_size
         self.num_proposals = num_proposals
-        self.depth = depth - 1
 
         self.num_locals = num_locals
         self.query_mode = query_mode
 
-        self.use_relation = use_relation
-        # if self.use_relation: self.map_rel = nn.Linear(feat_size * 2, feat_size)
-
         self.use_oracle = use_oracle
-
-        self.bbox_embedding = nn.Linear(27, 128) #12 27
-        self.self_attn = nn.ModuleList(
-            MultiHeadAttention(d_model=feat_size, d_k=feat_size // head, d_v=feat_size // head, h=head) for i in
-            range(depth))
 
         self.map_previous = nn.Sequential(
             nn.Linear(hidden_size + feat_size + emb_size, 128),  # emb_size hidden_size
@@ -129,15 +112,6 @@ class TopDownSceneCaptionModule(nn.Module):
             nn.ReLU()
         )
         self.classifier = nn.Linear(hidden_size, self.num_vocabs)
-        self.self_fc = nn.Sequential(  # 4 128 256 4(head)
-            nn.Linear(4, 128),
-            nn.Dropout(0.1),
-            nn.LayerNorm(128),
-            nn.Linear(128, 256),
-            nn.Dropout(0.1),
-            nn.LayerNorm(256),
-            nn.Linear(256, 4)
-        )
 
         self.attention_size = 128  # hidden_size
         self.dec_att2 = MultiHeadAttention(d_model=self.attention_size, d_k=self.attention_size // head,
@@ -154,12 +128,10 @@ class TopDownSceneCaptionModule(nn.Module):
                 step_input: current word embedding, (batch_size, emb_size)
                 target_feat: object feature of the target object, (batch_size, feat_size)
                 obj_feats: object features of all detected objects, (batch_size, num_proposals, feat_size)
-                hidden_1: hidden state of top-down recurrent unit, (batch_size, hidden_size)
-                hidden_2: hidden state of language recurrent unit, (batch_size, hidden_size)
+                hidden: hidden state of language recurrent unit, (batch_size, hidden_size)
 
             Returns:
-                hidden_1: hidden state of top-down recurrent unit, (batch_size, hidden_size)
-                hidden_2: hidden state of language recurrent unit, (batch_size, hidden_size)
+                hidden: hidden state of language recurrent unit, (batch_size, hidden_size)
                 masks: attention masks on proposals, (batch_size, num_proposals, 1)
         '''
 
@@ -174,7 +146,6 @@ class TopDownSceneCaptionModule(nn.Module):
 
         combined = self.map_feat(obj_feats)  # batch_size, num_proposals, hidden_size
         combined = torch.tanh(combined)
-        # print("combined", combined.shape)
 
         # fuse inputs for language module
         lang_input = step_input  # single word
@@ -185,7 +156,8 @@ class TopDownSceneCaptionModule(nn.Module):
             lang_input = self.dec_att2(lang_input, proposal_feats, proposal_feats)
 
         lang_input = self.map_lang(lang_input)
-        # The Recurrent Cell is No Use
+
+        # The Recurrent Cell is Not Used
         hidden = lang_input
 
         # Mask is no-use
@@ -317,64 +289,8 @@ class TopDownSceneCaptionModule(nn.Module):
             data_dict = self._forward_sample_batch(data_dict, max_len)
         else:
             data_dict = self._forward_scene_batch(data_dict, use_tf, max_len)
-
         return data_dict
 
-    def _create_adjacent_mat(self, data_dict, object_masks):
-        batch_size, num_objects = object_masks.shape
-        adjacent_mat = torch.zeros(batch_size, num_objects, num_objects).cuda()
-
-        for obj_id in range(num_objects):
-            target_ids = torch.LongTensor([obj_id for _ in range(batch_size)]).cuda()
-            adjacent_entry = self._query_locals(data_dict, target_ids, object_masks, include_self=False) # batch_size, num_objects
-            adjacent_mat[:, obj_id] = adjacent_entry
-
-        return adjacent_mat
-
-    def _get_valid_object_masks(self, data_dict, target_ids, object_masks):
-        if self.num_locals == -1:
-            valid_masks = object_masks
-        else:
-            adjacent_mat = data_dict["adjacent_mat"]
-            batch_size, _, _ = adjacent_mat.shape
-            valid_masks = torch.gather(
-                adjacent_mat, 1, target_ids.view(batch_size, 1, 1).repeat(1, 1, self.num_proposals)).squeeze(1) # batch_size, num_proposals
-
-        return valid_masks
-
-    def _add_relation_feat(self, data_dict, obj_feats, target_ids):
-        rel_feats = data_dict["edge_feature"] # batch_size, num_proposals, num_locals, feat_size
-        batch_size = rel_feats.shape[0]
-
-        rel_feats = torch.gather(rel_feats, 1, 
-            target_ids.view(batch_size, 1, 1, 1).repeat(1, 1, self.num_locals, self.feat_size)).squeeze(1) # batch_size, num_locals, feat_size
-
-        # new_obj_feats = torch.cat([obj_feats, rel_feats], dim=1) # batch_size, num_proposals + num_locals, feat_size
-
-        # scatter the relation features to objects
-        adjacent_mat = data_dict["adjacent_mat"] # batch_size, num_proposals, num_proposals
-        rel_indices = torch.gather(adjacent_mat, 1, 
-            target_ids.view(batch_size, 1, 1).repeat(1, 1, self.num_proposals)).squeeze(1) # batch_size, num_proposals
-        rel_masks = rel_indices.unsqueeze(-1).repeat(1, 1, self.feat_size) == 1 # batch_size, num_proposals, feat_size
-        scattered_rel_feats = torch.zeros(obj_feats.shape).cuda().masked_scatter(rel_masks, rel_feats) # batch_size, num_proposals, feat_size
-
-        new_obj_feats = obj_feats + scattered_rel_feats
-        # new_obj_feats = torch.cat([obj_feats, scattered_rel_feats], dim=-1)
-        # new_obj_feats = self.map_rel(new_obj_feats)
-
-        return new_obj_feats
-
-    def _expand_object_mask(self, data_dict, object_masks, num_extra):
-        batch_size, num_objects = object_masks.shape
-        exp_masks = torch.zeros(batch_size, num_extra).cuda()
-
-        num_edge_targets = data_dict["num_edge_target"]
-        for batch_id in range(batch_size):
-            exp_masks[batch_id, :num_edge_targets[batch_id]] = 1
-
-        object_masks = torch.cat([object_masks, exp_masks], dim=1) # batch_size, num_objects + num_extra
-
-        return object_masks
 
     def get_local_feat(self, data_dict, obj_feats, object_masks):
         batch_size, num_proposal, feature_size = obj_feats.shape
@@ -400,51 +316,6 @@ class TopDownSceneCaptionModule(nn.Module):
 
         return obj_features
 
-    def target_feat_aug(self, data_dict, target_ids, target_feats, obj_feats):
-        B, num_proposal, obj_feature_size = obj_feats.shape  # batch_size * len_nun_max, num_proposal, 128
-        len_nun_max = data_dict["lang_feat_list"].shape[1]
-        batch_size = B // len_nun_max
-
-        obj_feats = obj_feats.view(batch_size, len_nun_max, num_proposal, obj_feature_size)
-        pred_cluster_labels = target_ids.view(batch_size, len_nun_max, 1)  # B len_nun_max 1
-        """
-        sem_cls_scores = data_dict['sem_cls_scores']  # batch_size, num_proposal, 18
-        sem_cls_scores = sem_cls_scores[:, None, :, :].repeat(1, len_nun_max, 1, 1)  # batch_size, len_nun_max, num_proposal, 18
-        pred_obj_cls_scores = torch.gather(sem_cls_scores, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, self.num_class)).squeeze(2)  # B len_nun_max 18
-        pred_obj_cls = torch.argmax(pred_obj_cls_scores, 2).unsqueeze(2)  # batch_size, len_nun_max 1
-
-        select_sem_cls_scores = torch.gather(sem_cls_scores, 3, pred_obj_cls.unsqueeze(3).repeat(1, 1, num_proposal, 1)).squeeze(3)  # B len_nun_max num_proposal
-        _, select_cls_scores_idx = torch.topk(select_sem_cls_scores, k=self.k, dim=-1, largest=True, sorted=False)  # B len_nun_max k
-        new_object_feats = torch.gather(obj_feats, 2, select_cls_scores_idx.unsqueeze(3).repeat(1, 1, 1, obj_feature_size))  # B len_nun_max k 128
-        new_object_feats = new_object_feats.view(batch_size * len_nun_max, self.k, obj_feature_size)
-        """
-        center = data_dict['center']  # batch_size, num_proposal, 3
-        center = center[:, None, :, :].repeat(1, len_nun_max, 1, 1)  # batch_size, len_nun_max, num_proposal, 3
-        pred_obj_center = torch.gather(center, 2, pred_cluster_labels.unsqueeze(3).repeat(1, 1, 1, 3)).view(batch_size * len_nun_max, 1, -1)  # B*len_nun_max 1 3
-        center = center.view(batch_size * len_nun_max, num_proposal, -1)
-        dist, ind = knn_distance(center[:, :, 0:3], pred_obj_center[:, :, 0:3], k=self.k)  # ind: B*len_nun_max 1 k
-        ind = ind.permute(0, 2, 1).contiguous()  # B*len_nun_max k
-
-        obj_features_reshape = obj_feats.view(batch_size * len_nun_max, num_proposal, -1)
-        obj_knn = torch.gather(obj_features_reshape.unsqueeze(2).repeat(1, 1, self.k, 1), 1,
-                               ind.unsqueeze(3).repeat(1, 1, 1, obj_feature_size))
-        new_object_feats = obj_knn.view(batch_size * len_nun_max, self.k, -1)
-
-        T = 0.7
-        for i in range(batch_size * len_nun_max):
-            num = random.randint(0, 9)
-            if num < self.k:
-                target_feats[i] = new_object_feats[i, num, :]
-                #target_feats[i] = target_feats[i]*T + new_object_feats[i, num, :]*(1-T)
-                """
-                rand = random.random()
-                if rand < 0.5:
-                    target_feats[i, :obj_feature_size // 2] = new_object_feats[i, num, :obj_feature_size // 2]
-                else:
-                    target_feats[i, obj_feature_size // 2:] = new_object_feats[i, num, obj_feature_size // 2:]
-                """
-
-        return data_dict, target_feats
 
     def _forward_sample_batch(self, data_dict, max_len=CONF.TRAIN.MAX_DES_LEN, min_iou=CONF.TRAIN.MIN_IOU_THRESHOLD):
         """
@@ -514,9 +385,7 @@ class TopDownSceneCaptionModule(nn.Module):
         else:
             # target_ids, target_ious = select_target(data_dict)
             target_ids, target_ious = select_multi_target(data_dict)  # batch_size * len_nun_max
-        # print("obj_feats1", obj_feats.shape)
-        # print("target_ids1", target_ids.shape)
-        # print("target_ids2", target_ids.view(batch_size*len_nun_max, 1, 1).repeat(1, 1, self.feat_size).shape)
+
         # select object features
         target_feats = torch.gather(obj_feats, 1, target_ids.view(batch_size*len_nun_max, 1, 1).repeat(1, 1, self.feat_size)).squeeze(1) # batch_size * len_nun_max, emb_size
 
@@ -526,10 +395,7 @@ class TopDownSceneCaptionModule(nn.Module):
         #print("valid_masks", valid_masks.shape, valid_masks[0], valid_masks[0].sum())
         #print("object_masks", object_masks.shape, object_masks[0], object_masks[0].sum())
 
-        # object-to-object relation
-        if self.use_relation:
-            obj_feats = self._add_relation_feat(data_dict, obj_feats, target_ids)
-            # valid_masks = self._expand_object_mask(data_dict, valid_masks, self.num_locals)
+        # object-to-object relation (not used; removed)
 
         # Todo attention caption
 
@@ -645,13 +511,6 @@ class TopDownSceneCaptionModule(nn.Module):
         obj_feats = features
         ###############################caption#######################################
         # # create adjacency matrices
-        # if self.num_locals != -1 and "adjacent_mat" not in data_dict:
-        #     adjacent_mat = self._create_adjacent_mat(data_dict, object_masks)
-        #     data_dict["adjacent_mat"] = adjacent_mat
-
-        # # include self to adjacency matrices
-        # identity = torch.eye(self.num_proposals).cuda().unsqueeze(0).repeat(batch_size, 1, 1)
-        # data_dict["adjacent_mat"] += identity # include self
 
         # recurrent from 0 to max_len - 2
         outputs = []
@@ -666,10 +525,7 @@ class TopDownSceneCaptionModule(nn.Module):
             # valid_prop_masks = self._get_valid_object_masks(data_dict, target_ids, object_masks)
             valid_prop_masks = object_masks if self.num_locals == -1 else self._query_locals(data_dict, target_ids, object_masks)
 
-            # object-to-object relation
-            if self.use_relation:
-                prop_obj_feats = self._add_relation_feat(data_dict, prop_obj_feats, target_ids)
-                # valid_prop_masks = self._expand_object_mask(data_dict, valid_prop_masks, self.num_locals)
+            # object-to-object relation (not used)
 
             valid_masks.append(valid_prop_masks.unsqueeze(1))
 

@@ -44,7 +44,7 @@ ITER_REPORT_TEMPLATE = """
 [info] mean_forward_time: {mean_forward_time}s
 [info] mean_backward_time: {mean_backward_time}s
 [info] mean_eval_time: {mean_eval_time}s
-[info] mean_iter_time: {mean_iter_time}s
+[info] mean_iter_time: {mean_iter_time}s (no fetch time)
 [info] mean_real_time: {mean_real_time}s
 [info] ETA: {eta_h}h {eta_m}m {eta_s}s
 """
@@ -291,15 +291,17 @@ class Solver():
         # finish training
         self._finish(epoch_id)
 
-    def _log(self, info_str):
+    def _log(self, info_str, output=True):
         self.log_fout.write(info_str + "\n")
         self.log_fout.flush()
-        print(info_str, flush=True)
+        if output:
+            print(info_str, flush=True)
 
-    def _log_eval(self, info_str):
+    def _log_eval(self, info_str, output=False):
         self.eval_fout.write(info_str + "\n")
         self.eval_fout.flush()
-        print(info_str, flush=True)
+        if output:
+            print(info_str, flush=True)
 
     def _reset_log(self, phase):
         if phase == "train":
@@ -335,23 +337,23 @@ class Solver():
                 "max_iou_rate_0.25": [],
                 "max_iou_rate_0.5": [],
                 # for eval
-                "bleu-1": [],
-                "bleu-2": [],
-                "bleu-3": [],
-                "bleu-4": [],
-                "cider": [],
-                "rouge": [],
-                "meteor": []
+                "bleu-1": 0,
+                "bleu-2": 0,
+                "bleu-3": 0,
+                "bleu-4": 0,
+                "cider": 0,
+                "rouge": 0,
+                "meteor": 0
             }
         else:
             self.log[phase] = {
-                "bleu-1": [],
-                "bleu-2": [],
-                "bleu-3": [],
-                "bleu-4": [],
-                "cider": [],
-                "rouge": [],
-                "meteor": [],
+                "bleu-1": 0,
+                "bleu-2": 0,
+                "bleu-3": 0,
+                "bleu-4": 0,
+                "cider": 0,
+                "rouge": 0,
+                "meteor": 0,
                 # info
                 "forward": [],
                 "backward": [],
@@ -388,7 +390,9 @@ class Solver():
         if phase == "train" and not is_eval:
             log = {
                 "loss": ["loss", "ref_loss", "lang_loss", "cap_loss", "ori_loss", "dist_loss", "objectness_loss", "vote_loss", "box_loss"],
-                "score": ["lang_acc", "ref_acc", "cap_acc", "ori_acc", "obj_acc", "pred_ious", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5", "max_iou_rate_0.25", "max_iou_rate_0.5"]
+                "caption_score": ["cap_acc", "ori_acc", "pred_ious"],  # ori_acc: orientation
+                "ground_score": ["lang_acc", "ref_acc", "obj_acc", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5", 
+                                 "max_iou_rate_0.25", "max_iou_rate_0.5"]
             }
             for key in log:
                 for item in log[key]:
@@ -401,17 +405,19 @@ class Solver():
 
         # eval
         if is_eval:
-            log = ["bleu-1", "bleu-2", "bleu-3", "bleu-4", "cider", "rouge", "meteor"]
-            for key in log:
-                if self.log[phase][key]:
+            caption_log = {
+                "caption_score": ["bleu-1", "bleu-2", "bleu-3", "bleu-4", "cider", "rouge", "meteor"]
+            }
+            for key in caption_log:
+                for item in caption_log[key]:
                     self._log_writer[phase].add_scalar(
-                        "eval/{}".format(key),
-                        self.log[phase][key],
+                        "{}/{}".format(key, item),
+                        self.log[phase][item],
                         self._global_iter_id
                     )
             ground_log = {
-                "score": ["lang_acc", "ref_acc", "obj_acc", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5",
-                          "max_iou_rate_0.25", "max_iou_rate_0.5"]
+                "ground_score": ["lang_acc", "ref_acc", "obj_acc", "pos_ratio", "neg_ratio", "iou_rate_0.25", "iou_rate_0.5",
+                                 "max_iou_rate_0.25", "max_iou_rate_0.5"]
             }
             for key in ground_log:
                 for item in ground_log[key]:
@@ -523,7 +529,7 @@ class Solver():
             self._running_log["max_iou_rate_0.25"] = 0
             self._running_log["max_iou_rate_0.5"] = 0
 
-    def _eval(self, phase, epoch):
+    def _caption_eval(self, phase, epoch):  # eval: eval for whole dataset
         if self.caption and phase != "train" and epoch >= self.num_ground_epoch:
             bleu, cider, rouge, meteor = eval_cap(
                 model=self.model,
@@ -563,7 +569,7 @@ class Solver():
             self._set_phase(phase)
 
         if phase == "val" or epoch_id == 0 or not is_eval:
-            # re-init log
+            # reset log for each epoch
             self._reset_log(phase)
 
         # change dataloader
@@ -677,15 +683,15 @@ class Solver():
 
                 # report
                 if phase == "train" and not is_eval:
-                    iter_time = self.log[phase]["fetch"][-1]
-                    iter_time += self.log[phase]["forward"][-1]
+                    # iter_time = self.log[phase]["fetch"][-1]
+                    iter_time = self.log[phase]["forward"][-1]
                     iter_time += self.log[phase]["backward"][-1]
                     iter_time += self.log[phase]["eval"][-1]
                     real_time = time.time() - start_solver
                     self.log[phase]["real_time"].append(real_time)
                     start_solver = time.time()
                     self.log[phase]["iter_time"].append(iter_time)
-                    if (self._global_iter_id + 1) % self.verbose == 0:
+                    if self._global_iter_id % self.verbose == 0:
                         self._train_report(epoch_id)
 
                     # evaluation
@@ -699,7 +705,7 @@ class Solver():
                         self._feed(self.dataloader["eval"]["train"], "train", epoch_id, is_eval=True)
                         self._dump_log("train", True)
                         
-                        # val
+                        # eval
                         print("evaluating on val...")
                         self._feed(self.dataloader["eval"]["val"], "val", epoch_id, is_eval=True)
                         self._dump_log("val", True)
@@ -708,14 +714,15 @@ class Solver():
                         self._epoch_report(epoch_id)
 
                     # dump log
-                    if self._global_iter_id % 50 == 0:
+                    if self._global_iter_id % 50 == 0:  # for tensorboard
                         self._dump_log("train")
+                        self._reset_log("train")
                     #if self._global_iter_id != 0: self._dump_log("train")
                     self._global_iter_id += 1
         else:
         #if is_eval:
-            self._eval(phase, epoch_id)
             if phase == "val":
+                self._caption_eval(phase, epoch_id)
                 for data_dict in dataloader:
                     # move to cuda
                     for key in data_dict:

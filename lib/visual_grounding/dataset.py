@@ -354,11 +354,12 @@ class ScannetReferenceDataset(Dataset):
         data_dict["load_time"] = time.time() - start
 
         data_dict["lang_num"] = np.array(lang_num).astype(np.int64)
-        data_dict["lang_feat_list"] = np.array(lang_feat_list).astype(np.float32)  # language feature vectors
-        data_dict["lang_len_list"] = np.array(lang_len_list).astype(np.int64)  # length of each description
-        data_dict["main_lang_feat_list"] = np.array(main_lang_feat_list).astype(np.float32)  # main language feature vectors
-        data_dict["main_lang_len_list"] = np.array(main_lang_len_list).astype(np.int64)  # length of each main description
-        data_dict["first_obj_list"] = np.array(first_obj_list).astype(np.int64)
+        # add 'ground' : for model usage
+        data_dict["ground_lang_feat_list"] = np.array(lang_feat_list).astype(np.float32)  # language feature vectors
+        data_dict["ground_lang_len_list"] = np.array(lang_len_list).astype(np.int64)  # length of each description
+        data_dict["ground_main_lang_feat_list"] = np.array(main_lang_feat_list).astype(np.float32)  # main language feature vectors
+        data_dict["ground_main_lang_len_list"] = np.array(main_lang_len_list).astype(np.int64)  # length of each main description
+        data_dict["ground_first_obj_list"] = np.array(first_obj_list).astype(np.int64)
         data_dict["unk_list"] = np.array(unk_list).astype(np.float32)
         data_dict["ref_box_label_list"] = np.array(ref_box_label_list).astype(np.int64)  # 0/1 reference labels for each object bbox
         data_dict["ref_center_label_list"] = np.array(ref_center_label_list).astype(np.float32)

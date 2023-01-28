@@ -6,27 +6,32 @@ import os
 
 from models.base_module.backbone_module import Pointnet2Backbone
 from models.base_module.voting_module import VotingModule
+
 from models.proposal_module.proposal_module_fcos import ProposalModule
 from models.proposal_module.relation_module import RelationModule
-from .caption_module import SceneCaptionModule
+
+from .lang_module_t5 import LangModule
+from .crossmodal_module import CrossmodalModule
 
 
-class CapNet(nn.Module):
-    def __init__(self, num_class, vocabulary, embeddings, num_heading_bin, num_size_cluster, mean_size_arr, 
-    input_feature_dim=0, num_proposal=256, num_locals=-1, vote_factor=1, sampling="vote_fps",
-    no_caption=False, query_mode="corner", emb_size=300, hidden_size=512, dataset_config=None):
+class VqaNet(nn.Module):
+    def __init__(self, num_class, num_heading_bin, num_size_cluster, mean_size_arr,
+                 input_feature_dim=0, num_proposal=128, vote_factor=1, sampling="vote_fps",
+                 use_lang_classifier=True, no_reference=False,
+                 hidden_size=256, dataset_config=None):
         super().__init__()
 
         self.num_class = num_class
         self.num_heading_bin = num_heading_bin
         self.num_size_cluster = num_size_cluster
         self.mean_size_arr = mean_size_arr
-        assert(mean_size_arr.shape[0] == self.num_size_cluster)
+        assert (mean_size_arr.shape[0] == self.num_size_cluster)
         self.input_feature_dim = input_feature_dim
         self.num_proposal = num_proposal
         self.vote_factor = vote_factor
         self.sampling = sampling
-        self.no_caption = no_caption
+        self.use_lang_classifier = use_lang_classifier
+        self.no_reference = no_reference
         self.dataset_config = dataset_config
 
         # --------- PROPOSAL GENERATION ---------
@@ -38,19 +43,25 @@ class CapNet(nn.Module):
 
         # Vote aggregation and object proposal
         self.proposal = ProposalModule(num_class, num_heading_bin, num_size_cluster, mean_size_arr, num_proposal, sampling)
+        self.relation = RelationModule(num_proposals=num_proposal, det_channel=128, input_feature_dim=input_feature_dim, depth=1)  # bef 256
 
-        # Caption generation
-        if not no_caption:
-            self.relation = RelationModule(num_proposals=num_proposal, det_channel=128)  # bef 256
-            self.caption = SceneCaptionModule(vocabulary, embeddings, emb_size, 128, hidden_size, num_proposal, num_locals, query_mode)
+        # --------- LANGUAGE ENCODING ---------
+        # Encode the input descriptions into vectors
+        # (including attention and language classification)
+        self.language = LangModule(use_lang_classifier=use_lang_classifier)
 
-    def forward(self, data_dict, use_tf=True, is_eval=False):
+        # --------- PROPOSAL MATCHING ---------
+        # Match the generated proposals and select the most confident ones
+        self.crossmodal = CrossmodalModule(num_proposals=num_proposal, det_channel=128, hidden_size=768)  # bef 256
+
+
+    def forward(self, data_dict):
         """ Forward pass of the network
 
         Args:
             data_dict: dict
                 {
-                    point_clouds, 
+                    point_clouds,
                     lang_feat
                 }
 
@@ -71,14 +82,14 @@ class CapNet(nn.Module):
 
         # --------- HOUGH VOTING ---------
         data_dict = self.backbone_net(data_dict)
-                
+
         # --------- HOUGH VOTING ---------
         xyz = data_dict["fp2_xyz"]
         features = data_dict["fp2_features"]
         data_dict["seed_inds"] = data_dict["fp2_inds"]
         data_dict["seed_xyz"] = xyz
         data_dict["seed_features"] = features
-        
+
         xyz, features = self.vgen(xyz, features)
         features_norm = torch.norm(features, p=2, dim=1)
         features = features.div(features_norm.unsqueeze(1))
@@ -89,25 +100,23 @@ class CapNet(nn.Module):
         data_dict = self.proposal(xyz, features, data_dict)
 
         #######################################
+        #           LANGUAGE BRANCH           #
+        #           PROPOSAL BRANCH           #
+        #######################################
+        data_dict = self.language.encode(data_dict)
+        data_dict = self.relation(data_dict)
+
+        #######################################
+        #        CROSSMODAL INTERACTION       #
+        #######################################
+        # config for bbox_embedding
+        data_dict = self.crossmodal(data_dict)
+
+        #######################################
         #                                     #
-        #           GRAPH ENHANCEMENT         #
+        #          PROPOSAL MATCHING          #
         #                                     #
         #######################################
-
-        if self.num_graph_steps > 0: data_dict = self.graph(data_dict)
-
-        #######################################
-        #                                     #
-        #            CAPTION BRANCH           #
-        #                                     #
-        #######################################
-
-        # --------- CAPTION GENERATION ---------
-        if not self.no_caption:
-            data_dict = self.relation(data_dict)
-            data_dict = self.caption(data_dict, use_tf, is_eval)
-        else:
-            data_dict['max_iou_rate_0.25'] = 0.
-            data_dict['max_iou_rate_0.5'] = 0.
+        data_dict = self.language.decode(data_dict)
 
         return data_dict

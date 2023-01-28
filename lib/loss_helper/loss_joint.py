@@ -125,7 +125,6 @@ def get_joint_loss(data_dict, device, config, weights,
     if distance:
         raise NotImplementedError()
         dist_loss = compute_node_distance_loss(data_dict)
-
         # store
         data_dict["dist_loss"] = dist_loss
     else:

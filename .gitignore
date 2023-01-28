@@ -1,7 +1,9 @@
 .idea
 # data/*
 
+# we do not update data/ (will be fixed later)
 # dataset
+data/*
 data/ScanRefer*
 data/glove*
 data/scannet/scannet_data
@@ -36,10 +38,6 @@ ignore/
 */*/tensorboard/*
 *.swp
 
+removed
 nouse
 __pycache__
-*3dvg_trans*
-*vqa*
-Dataprocessing
-count_dataset_number.py
-*visual_question_answering*

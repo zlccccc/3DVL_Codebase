@@ -13,8 +13,8 @@ from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import StepLR, MultiStepLR, CosineAnnealingLR
 
 from lib.configs.config_grounding import CONF
-from lib.loss_helper.loss_grounding import get_loss
-from .eval_helper import get_eval
+from lib.loss_helper.loss_grounding_3dvg_trans import get_loss
+from .eval_helper_3dvg_trans import get_eval
 from utils.eta import decode_eta
 from lib.pointnet2.pytorch_utils import BNMomentumScheduler
 
@@ -299,7 +299,7 @@ class Solver():
         self.optimizer.step()
 
     def _compute_loss(self, data_dict):
-        data_dict = get_loss(
+        _, data_dict = get_loss(
             data_dict=data_dict,
             config=self.config,
             detection=self.detection,
@@ -445,7 +445,7 @@ class Solver():
                 real_time = time.time() - start_solver
                 self.log[phase]["real_time"].append(real_time)
                 start_solver = time.time()
-                if self._global_iter_id % self.verbose == 0:
+                if (self._global_iter_id + 1) % self.verbose == 0:
                     self._train_report(epoch_id)
 
                 # evaluation
@@ -460,7 +460,6 @@ class Solver():
                 # dump log
                 if self._global_iter_id % 50 == 0:
                     self._dump_log("train")
-                    self._reset_log("train")
                 self._global_iter_id += 1
 
 

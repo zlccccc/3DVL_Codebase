@@ -8,17 +8,15 @@ from models.base_module.backbone_module import Pointnet2Backbone
 from models.base_module.voting_module import VotingModule
 from models.base_module.lang_module import LangModule
 
-from models.proposal_module.proposal_module_fcos import ProposalModule
-from models.proposal_module.relation_module import RelationModule
-from models.refnet.match_module import MatchModule
-from models.capnet.caption_module import SceneCaptionModule
+from models.proposal_module.proposal_module_detr import ProposalModule
+from .match_module_3dvg_trans import MatchModule
 
-class JointNet(nn.Module):
-    def __init__(self, num_class, num_heading_bin, num_size_cluster, mean_size_arr, vocabulary, embeddings,
-                 input_feature_dim=0, num_proposal=128, num_locals=-1, vote_factor=1, sampling="vote_fps",
-                 no_caption=False, query_mode="corner",
+
+class RefNet(nn.Module):
+    def __init__(self, num_class, num_heading_bin, num_size_cluster, mean_size_arr,
+                 input_feature_dim=0, num_proposal=128, vote_factor=1, sampling="vote_fps",
                  use_lang_classifier=True, use_bidir=False, no_reference=False,
-                 emb_size=300, ground_hidden_size=256, caption_hidden_size=512, dataset_config=None):
+                 emb_size=300, hidden_size=256, dataset_config=None):
         super().__init__()
 
         self.num_class = num_class
@@ -33,7 +31,6 @@ class JointNet(nn.Module):
         self.use_lang_classifier = use_lang_classifier
         self.use_bidir = use_bidir
         self.no_reference = no_reference
-        self.no_caption = no_caption
         self.dataset_config = dataset_config
 
         # --------- PROPOSAL GENERATION ---------
@@ -44,24 +41,36 @@ class JointNet(nn.Module):
         self.vgen = VotingModule(self.vote_factor, 256)
 
         # Vote aggregation and object proposal
-        self.proposal = ProposalModule(num_class, num_heading_bin, num_size_cluster, mean_size_arr, num_proposal, sampling)
-        self.relation = RelationModule(num_proposals=num_proposal, det_channel=128, input_feature_dim=input_feature_dim)  # bef 256
+        config_transformer = {
+            'mask': 'no_mask',
+            'weighted_input': True,
+            'transformer_type': 'myAdd_20;deformable',
+            'deformable_type': 'myAdd',
+            'position_embedding': 'none',
+            'input_dim': 0,
+            'enc_layers': 0,
+            'dec_layers': 2,
+            'dim_feedforward': 2048,
+            'hidden_dim': 288,
+            'dropout': 0.1,
+            'nheads': 8,
+            'pre_norm': False
+        }
+        self.proposal = ProposalModule(num_class, num_heading_bin, num_size_cluster, mean_size_arr, num_proposal,
+                                       sampling, config_transformer=config_transformer, dataset_config=dataset_config)
 
         if not no_reference:
             # --------- LANGUAGE ENCODING ---------
             # Encode the input descriptions into vectors
             # (including attention and language classification)
-            self.lang = LangModule(num_class, use_lang_classifier, use_bidir, emb_size, ground_hidden_size)
+            self.lang = LangModule(num_class, use_lang_classifier, use_bidir, emb_size, hidden_size)
 
             # --------- PROPOSAL MATCHING ---------
             # Match the generated proposals and select the most confident ones
-            self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * ground_hidden_size, det_channel=128)  # bef 256
+            self.match = MatchModule(num_proposals=num_proposal, lang_size=(1 + int(self.use_bidir)) * hidden_size,
+                                     det_channel=config_transformer['hidden_dim'])  # bef 256
 
-        if not no_caption:
-            self.caption = SceneCaptionModule(vocabulary, embeddings, emb_size, 128, caption_hidden_size, num_proposal, num_locals, query_mode)
-
-
-    def forward(self, data_dict, use_tf=True, is_eval=False):
+    def forward(self, data_dict):
         """ Forward pass of the network
 
         Args:
@@ -104,7 +113,6 @@ class JointNet(nn.Module):
 
         # --------- PROPOSAL GENERATION ---------
         data_dict = self.proposal(xyz, features, data_dict)
-        data_dict = self.relation(data_dict)
 
         if not self.no_reference:
             #######################################
@@ -125,15 +133,5 @@ class JointNet(nn.Module):
             # --------- PROPOSAL MATCHING ---------
             # config for bbox_embedding
             data_dict = self.match(data_dict)
-
-        #######################################
-        #                                     #
-        #            CAPTION BRANCH           #
-        #                                     #
-        #######################################
-
-        # --------- CAPTION GENERATION ---------
-        if not self.no_caption:
-            data_dict = self.caption(data_dict, use_tf, is_eval)
 
         return data_dict

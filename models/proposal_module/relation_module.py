@@ -7,11 +7,12 @@ import random
 
 
 class RelationModule(nn.Module):
-    def __init__(self, num_proposals=256, hidden_size=128, lang_num_size=300, det_channel=128, head=4, depth=2):
+    def __init__(self, num_proposals=256, hidden_size=128, lang_num_size=300, det_channel=128, head=4, depth=2,
+                 input_feature_dim=128, use_box_embedding=True):
         super().__init__()
-        self.use_box_embedding = True
         self.use_dist_weight_matrix = True
-        self.use_obj_embedding = True
+        self.use_box_embedding = use_box_embedding
+        self.use_obj_embedding = (input_feature_dim != 0)
 
         self.num_proposals = num_proposals
         self.hidden_size = hidden_size
@@ -37,7 +38,8 @@ class RelationModule(nn.Module):
             MultiHeadAttention(d_model=hidden_size, d_k=hidden_size // head, d_v=hidden_size // head, h=head) for i in range(depth))
 
         self.bbox_embedding = nn.ModuleList(nn.Linear(27, hidden_size) for i in range(depth))
-        self.obj_embedding = nn.ModuleList(nn.Linear(128, hidden_size) for i in range(depth))
+        if self.use_obj_embedding:  # color & mutiview (if available)
+            self.obj_embedding = nn.ModuleList(nn.Linear(input_feature_dim, hidden_size) for i in range(depth))
 
 
     def _get_bbox_centers(self, corners):
@@ -92,9 +94,11 @@ class RelationModule(nn.Module):
                 dist_weights = None
                 attention_matrix_way = 'mul'
 
-            # multiview/rgb feature embedding
+            # multiview/rgb/normals feature embedding (no significant difference)
             if self.use_obj_embedding:
-                obj_feat = data_dict["point_clouds"][..., 6:6 + 128].permute(0, 2, 1)
+                # print(data_dict["point_clouds"].shape, '<< point obj embedding shape')
+                # obj_feat = data_dict["point_clouds"][..., 6:6 + 128].permute(0, 2, 1)
+                obj_feat = data_dict["point_clouds"][..., 3:].permute(0, 2, 1)
                 obj_feat_dim = obj_feat.shape[1]
                 obj_feat_id_seed = data_dict["seed_inds"]
                 obj_feat_id_seed = obj_feat_id_seed.long() + (
