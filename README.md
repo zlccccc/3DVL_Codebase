@@ -1,6 +1,6 @@
-# Toward Explainable 3D Grounded Visual Question Answering: A New Benchmark and Strong Baseline
+# 3DVL-Codebase
 
-This repo aims to merge our 3DVL works and will be continuously updated, hopefully contributing to subsequent 3D visual language tasks.
+This repo aims to merge our 3DVL works (3DVG-Transformer, 3DJCG, FE-3DGQA, ...) and will be continuously updated, hopefully contributing to subsequent 3D visual language tasks.
 
 ## For 3D Visual Grounding:
 
